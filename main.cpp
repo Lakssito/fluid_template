@@ -10,6 +10,9 @@
 
 #include "lbfgs.h"
 
+
+// lab1 begin
+
 double sqr(double x) { return x * x; };
 
 class Vector {
