@@ -196,6 +196,28 @@ public:
         //      For all other sites Pj (optionally, only k nearest neighbors) :
         //          Clip it with bisector of [Pi,Pj]
         //      (Lab 3, fluids) : also clip it by a disk of radius sqrt(w_i - w_air) centered at Pi
+
+        cells.resize(points.size());
+
+        #pragma omp parallel for
+        for (int i = 0; i < (int)points.size(); i++) {
+            // Start with a unit square
+            Polygon cellule;
+            cellule.vertices.push_back(Vector(0, 0));
+            cellule.vertices.push_back(Vector(1, 0));
+            cellule.vertices.push_back(Vector(1, 1));
+            cellule.vertices.push_back(Vector(0, 1));
+
+            // Clip by bisector with each other site Pj
+            for (int j = 0; j < (int)points.size(); j++) {
+                if (i == j) continue;
+                double poids_i = weights.empty() ? 0.0 : weights[i];
+                double poids_j = weights.empty() ? 0.0 : weights[j];
+                cellule = clip_by_bisector(cellule, points[i], points[j], poids_i, poids_j);
+            }
+
+            cells[i] = cellule;
+        }
     }
 
 
@@ -214,10 +236,29 @@ public:
 
         // TODO Lab 1 (Voronoi) : in Lab 1, we assume w0 = w1 = 0
         // Clip a polygon by the bisector of the segment defined by P0 (the current site of the Voronoi cell being computed) and Pi (another site)
-        
+
         // TODO Lab 2 (Semi-Discrete Optimal Transport) : extend to Laguerre cells, i.e., w0 != w1
 
         Polygon result;
+
+        int nSommets = V.vertices.size();
+        for (int j = 0; j < nSommets; j++) {
+            const Vector& A = V.vertices[j];
+            const Vector& B = V.vertices[(j + 1) % nSommets];
+
+            // dA < 0 : A is on the P0 side (inside)
+            // bisector condition: ||M-P0||^2 - w0 = ||M-Pi||^2 - wi  (linear in M)
+            double dA = dot(A - P0, A - P0) - w0 - (dot(A - Pi, A - Pi) - wi);
+            double dB = dot(B - P0, B - P0) - w0 - (dot(B - Pi, B - Pi) - wi);
+
+            if (dA <= 0) {
+                result.vertices.push_back(A);
+            }
+            if ((dA < 0 && dB > 0) || (dA > 0 && dB < 0)) {
+                double t_coupe = dA / (dA - dB);
+                result.vertices.push_back(A + t_coupe * (B - A));
+            }
+        }
 
         return result;
     }
@@ -364,16 +405,14 @@ void save_svg(const std::vector<Polygon>& polygons, std::string filename, std::s
 
 int main() {
 
-    Polygon p;
-    p.vertices.push_back(Vector(0.1, 0.2));
-    p.vertices.push_back(Vector(0.6, 0.4));
-    p.vertices.push_back(Vector(0.5, 0.7));
-    p.vertices.push_back(Vector(0.2, 0.5));
-
-    std::vector<Polygon> s;
-    s.push_back(p);
-
-    save_frame(s, "toto");
-    save_svg(s, "toto.svg");
+    // Test on random points
+    int N = 50;
+    VoronoiDiagram vor;
+    vor.points.resize(N);
+    for (int i = 0; i < N; i++) {
+        vor.points[i] = Vector((double)rand() / RAND_MAX, (double)rand() / RAND_MAX);
+    }
+    vor.compute();
+    save_svg(vor.cells, "voronoi.svg");
     return 0;
 }
